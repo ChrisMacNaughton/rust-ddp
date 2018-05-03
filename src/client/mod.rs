@@ -10,15 +10,15 @@ pub use self::connection::{Collection, DdpConnError};
 mod messages;
 use self::messages::Ejson;
 
-pub struct Client {
+pub struct Client<T> {
     // url:    Url,
     retry:  Option<Retry>,
-    conn:   Connection,
+    conn:   Connection<T>,
 }
 /*
  * Should Have BlockingClient, QueuedClient, NonblockingClient
  */
-impl Client {
+impl<T> Client<T> {
     pub fn new(url: Url) -> Result<Self, DdpConnError> {
         let (conn, _) = try!(Connection::new(&url, || {
             /* TODO */

@@ -3,6 +3,7 @@ extern crate websocket;
 
 use std::collections::hash_map::HashMap;
 use std::io;
+use std::marker::PhantomData;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::mpsc::channel;
@@ -13,6 +14,7 @@ use serde_json::Value;
 use websocket::client::Url;
 use websocket::{ClientBuilder, Message};
 use websocket::client::sync::Client;
+use websocket::stream::sync::TlsStream;
 use websocket::message::OwnedMessage;
 use websocket::result::WebSocketError;
 
@@ -23,13 +25,14 @@ use random::Random;
 type MethodCallback = Box<FnMut(Result<&Ejson, &Ejson>) + Send + 'static>;
 type MongoLock<'s> = MutexGuard<'s, HashMap<String, Arc<Collection>>>;
 
-pub struct Connection {
+pub struct Connection<T> {
     core:       Core,
     session_id: String,
     version:    &'static str,
+    _type: PhantomData<T>
 }
 
-impl Connection {
+impl<T> Connection<T> {
     pub fn new<F>(url: &Url, on_crash: F) -> Result<(Self, ConnectionHandle), DdpConnError>
     where F: Fn() + Sync + Send + 'static {
         if url.scheme() != WS && url.scheme() != WSS {
@@ -127,12 +130,12 @@ impl Connection {
         &self.version
     }
 
-    fn handshake(url: &Url) -> Result<Client<TcpStream>, DdpConnError> {
-        // Handshake with the server
-        Ok(ClientBuilder::new(&url.to_string())
-            .map_err(|e| DdpConnError::Parse(e))?
-            .connect_insecure().map_err(|e| DdpConnError::Network(e) )?)
-    }
+    // fn handshake(url: &Url) -> Result<Client<TcpStream>, DdpConnError> {
+    //     // Handshake with the server
+    //     Ok(ClientBuilder::new(&url.to_string())
+    //         .map_err(|e| DdpConnError::Parse(e))?
+    //         .connect().map_err(|e| DdpConnError::Network(e) )?)
+    // }
 
     fn negotiate(client: &mut Client<TcpStream>, version: &'static str) -> Result<NegotiateResp, DdpConnError> {
         let request = Connect::new(version);
@@ -174,7 +177,9 @@ impl Connection {
         let mut v_index = 0;
 
         loop {
-            let mut client = try!( Connection::handshake(url) );
+            let mut client = ClientBuilder::new(&url.to_string())
+                .map_err(|e| DdpConnError::Parse(e))?
+                .connect_insecure().map_err(|e| DdpConnError::Network(e) )?;
             match Connection::negotiate(&mut client, VERSIONS[v_index]) {
                 Err(e) => return Err(e),
                 Ok(NegotiateResp::SessionId(session)) => return Ok((client, session, v_index)),
